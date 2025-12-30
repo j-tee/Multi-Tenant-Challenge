@@ -6,6 +6,7 @@ A production-ready multi-tenant invoice reconciliation system built with FastAPI
 
 - **Multi-tenancy**: Complete data isolation between organizations
 - **REST & GraphQL APIs**: Dual API support with shared service layer
+- **Fully Async**: Async SQLAlchemy 2.0 with async/await throughout
 - **Automated Reconciliation**: Deterministic matching with scoring algorithm
 - **AI Integration**: Natural language explanations with graceful fallback
 - **Idempotency**: Safe bulk operations with idempotency key support
@@ -403,12 +404,11 @@ pytest tests/test_tenant_isolation.py -v
 ## Future Improvements
 
 1. **Database Migrations**: Add Alembic for schema migrations
-2. **Async Support**: Convert to async SQLAlchemy for better performance
-3. **Caching**: Add Redis caching for frequent queries
-4. **Audit Logging**: Track all data changes per tenant
-5. **Rate Limiting**: Per-tenant rate limiting
-6. **Background Jobs**: Async reconciliation for large datasets
-7. **Webhooks**: Notify on match confirmations
+2. **Caching**: Add Redis caching for frequent queries
+3. **Audit Logging**: Track all data changes per tenant
+4. **Rate Limiting**: Per-tenant rate limiting
+5. **Background Jobs**: Async reconciliation for large datasets
+6. **Webhooks**: Notify on match confirmations
 
 ---
 
