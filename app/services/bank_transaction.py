@@ -1,10 +1,10 @@
-"""Bank Transaction service."""
+"""Async Bank Transaction service."""
 
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.models.bank_transaction import BankTransaction
@@ -12,16 +12,17 @@ from app.schemas.bank_transaction import (
     BankTransactionCreate,
     BankTransactionFilters,
     BankTransactionImportResult,
+    BankTransactionResponse,
 )
 
 
 class BankTransactionService:
-    """Service for bank transaction operations."""
+    """Async service for bank transaction operations."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def create(self, tenant_id: str, data: BankTransactionCreate) -> BankTransaction:
+    async def create(self, tenant_id: str, data: BankTransactionCreate) -> BankTransaction:
         """Create a new bank transaction."""
         transaction = BankTransaction(
             tenant_id=tenant_id,
@@ -32,21 +33,22 @@ class BankTransactionService:
             description=data.description,
         )
         self.db.add(transaction)
-        self.db.flush()
+        await self.db.flush()
         return transaction
 
-    def get_by_id(self, tenant_id: str, transaction_id: str) -> BankTransaction:
+    async def get_by_id(self, tenant_id: str, transaction_id: str) -> BankTransaction:
         """Get bank transaction by ID with tenant isolation."""
         stmt = select(BankTransaction).where(
             BankTransaction.id == transaction_id,
             BankTransaction.tenant_id == tenant_id,
         )
-        transaction = self.db.execute(stmt).scalar_one_or_none()
+        result = await self.db.execute(stmt)
+        transaction = result.scalar_one_or_none()
         if not transaction:
             raise NotFoundError("BankTransaction", transaction_id)
         return transaction
 
-    def get_by_external_id(
+    async def get_by_external_id(
         self,
         tenant_id: str,
         external_id: str,
@@ -56,9 +58,10 @@ class BankTransactionService:
             BankTransaction.external_id == external_id,
             BankTransaction.tenant_id == tenant_id,
         )
-        return self.db.execute(stmt).scalar_one_or_none()
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
 
-    def bulk_import(
+    async def bulk_import(
         self,
         tenant_id: str,
         transactions: list[BankTransactionCreate],
@@ -70,23 +73,23 @@ class BankTransactionService:
         for tx_data in transactions:
             # Check for duplicate by external_id if provided
             if tx_data.external_id:
-                existing = self.get_by_external_id(tenant_id, tx_data.external_id)
+                existing = await self.get_by_external_id(tenant_id, tx_data.external_id)
                 if existing:
                     skipped += 1
                     continue
 
-            transaction = self.create(tenant_id, tx_data)
+            transaction = await self.create(tenant_id, tx_data)
             imported.append(transaction)
 
         return BankTransactionImportResult(
             imported=len(imported),
             skipped=skipped,
             transactions=[
-                self._to_response(tx) for tx in imported
+                BankTransactionResponse.model_validate(tx) for tx in imported
             ],
         )
 
-    def list_by_tenant(
+    async def list_by_tenant(
         self,
         tenant_id: str,
         filters: BankTransactionFilters | None = None,
@@ -107,8 +110,9 @@ class BankTransactionService:
                 conditions.append(BankTransaction.amount <= filters.amount_max)
 
         # Count total
-        count_stmt = select(BankTransaction.id).where(and_(*conditions))
-        total = len(list(self.db.execute(count_stmt).scalars().all()))
+        count_stmt = select(func.count()).select_from(BankTransaction).where(and_(*conditions))
+        count_result = await self.db.execute(count_stmt)
+        total = count_result.scalar() or 0
 
         # Get paginated results
         stmt = (
@@ -118,11 +122,12 @@ class BankTransactionService:
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        transactions = list(self.db.execute(stmt).scalars().all())
+        result = await self.db.execute(stmt)
+        transactions = list(result.scalars().all())
 
         return transactions, total
 
-    def get_unmatched_transactions(self, tenant_id: str) -> list[BankTransaction]:
+    async def get_unmatched_transactions(self, tenant_id: str) -> list[BankTransaction]:
         """Get all unmatched transactions for a tenant."""
         from app.models.match import Match, MatchStatus
 
@@ -134,8 +139,9 @@ class BankTransactionService:
                 Match.status == MatchStatus.CONFIRMED,
             )
         )
+        matched_result = await self.db.execute(matched_stmt)
         matched_ids = [
-            row for row in self.db.execute(matched_stmt).scalars().all()
+            row for row in matched_result.scalars().all()
         ]
 
         # Get transactions not in matched list
@@ -143,7 +149,8 @@ class BankTransactionService:
             BankTransaction.tenant_id == tenant_id,
             ~BankTransaction.id.in_(matched_ids) if matched_ids else True,
         )
-        return list(self.db.execute(stmt).scalars().all())
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
     def _to_response(self, tx: BankTransaction) -> dict:
         """Convert transaction to response dict."""

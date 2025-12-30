@@ -18,6 +18,14 @@ class MatchStatusEnum(str, Enum):
     REJECTED = "rejected"
 
 
+class MatchCreate(BaseModel):
+    """Schema for creating a match."""
+
+    invoice_id: str
+    bank_transaction_id: str
+    score: Decimal | None = None
+
+
 class MatchResponse(BaseModel):
     """Schema for match response."""
 
@@ -57,6 +65,24 @@ class MatchCandidateResponse(BaseModel):
     match_id: str | None = None
 
 
+class MatchSuggestion(BaseModel):
+    """Schema for a single match suggestion."""
+
+    invoice_id: str
+    bank_transaction_id: str
+    confidence_score: Decimal
+    explanation: str | None = None
+
+
+class MatchSuggestionList(BaseModel):
+    """Schema for list of match suggestions."""
+
+    items: list[MatchSuggestion]
+    total: int
+    page: int = 1
+    page_size: int = 50
+
+
 class ReconciliationResult(BaseModel):
     """Schema for reconciliation result."""
 
@@ -78,3 +104,5 @@ class MatchList(BaseModel):
 
     items: list[MatchResponse]
     total: int
+    page: int = 1
+    page_size: int = 50

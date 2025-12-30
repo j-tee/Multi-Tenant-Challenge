@@ -1,10 +1,11 @@
-"""Invoice service."""
+"""Async Invoice service."""
 
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import and_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.invoice import Invoice, InvoiceStatus
@@ -12,12 +13,12 @@ from app.schemas.invoice import InvoiceCreate, InvoiceFilters
 
 
 class InvoiceService:
-    """Service for invoice operations."""
+    """Async service for invoice operations."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def create(self, tenant_id: str, data: InvoiceCreate) -> Invoice:
+    async def create(self, tenant_id: str, data: InvoiceCreate) -> Invoice:
         """Create a new invoice."""
         invoice = Invoice(
             tenant_id=tenant_id,
@@ -30,21 +31,26 @@ class InvoiceService:
             status=InvoiceStatus(data.status.value),
         )
         self.db.add(invoice)
-        self.db.flush()
+        await self.db.flush()
         return invoice
 
-    def get_by_id(self, tenant_id: str, invoice_id: str) -> Invoice:
+    async def get_by_id(self, tenant_id: str, invoice_id: str) -> Invoice:
         """Get invoice by ID with tenant isolation."""
-        stmt = select(Invoice).where(
-            Invoice.id == invoice_id,
-            Invoice.tenant_id == tenant_id,
+        stmt = (
+            select(Invoice)
+            .options(joinedload(Invoice.vendor))
+            .where(
+                Invoice.id == invoice_id,
+                Invoice.tenant_id == tenant_id,
+            )
         )
-        invoice = self.db.execute(stmt).scalar_one_or_none()
+        result = await self.db.execute(stmt)
+        invoice = result.unique().scalar_one_or_none()
         if not invoice:
             raise NotFoundError("Invoice", invoice_id)
         return invoice
 
-    def list_by_tenant(
+    async def list_by_tenant(
         self,
         tenant_id: str,
         filters: InvoiceFilters | None = None,
@@ -71,8 +77,9 @@ class InvoiceService:
                 conditions.append(Invoice.amount <= filters.amount_max)
 
         # Count total
-        count_stmt = select(Invoice.id).where(and_(*conditions))
-        total = len(list(self.db.execute(count_stmt).scalars().all()))
+        count_stmt = select(func.count()).select_from(Invoice).where(and_(*conditions))
+        count_result = await self.db.execute(count_stmt)
+        total = count_result.scalar() or 0
 
         # Get paginated results
         stmt = (
@@ -82,37 +89,43 @@ class InvoiceService:
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        invoices = list(self.db.execute(stmt).scalars().all())
+        result = await self.db.execute(stmt)
+        invoices = list(result.scalars().all())
 
         return invoices, total
 
-    def delete(self, tenant_id: str, invoice_id: str) -> None:
+    async def delete(self, tenant_id: str, invoice_id: str) -> None:
         """Delete an invoice with tenant isolation."""
-        invoice = self.get_by_id(tenant_id, invoice_id)
+        invoice = await self.get_by_id(tenant_id, invoice_id)
         if invoice.status == InvoiceStatus.MATCHED:
             raise ValidationError(
                 "Cannot delete a matched invoice",
                 {"invoice_id": invoice_id, "status": invoice.status.value},
             )
-        self.db.delete(invoice)
-        self.db.flush()
+        await self.db.delete(invoice)
+        await self.db.flush()
 
-    def update_status(
+    async def update_status(
         self,
         tenant_id: str,
         invoice_id: str,
         status: InvoiceStatus,
     ) -> Invoice:
         """Update invoice status with tenant isolation."""
-        invoice = self.get_by_id(tenant_id, invoice_id)
+        invoice = await self.get_by_id(tenant_id, invoice_id)
         invoice.status = status
-        self.db.flush()
+        await self.db.flush()
         return invoice
 
-    def get_open_invoices(self, tenant_id: str) -> list[Invoice]:
+    async def get_open_invoices(self, tenant_id: str) -> list[Invoice]:
         """Get all open invoices for a tenant."""
-        stmt = select(Invoice).where(
-            Invoice.tenant_id == tenant_id,
-            Invoice.status == InvoiceStatus.OPEN,
+        stmt = (
+            select(Invoice)
+            .options(joinedload(Invoice.vendor))
+            .where(
+                Invoice.tenant_id == tenant_id,
+                Invoice.status == InvoiceStatus.OPEN,
+            )
         )
-        return list(self.db.execute(stmt).scalars().all())
+        result = await self.db.execute(stmt)
+        return list(result.unique().scalars().all())

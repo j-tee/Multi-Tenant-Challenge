@@ -1,4 +1,4 @@
-"""Main FastAPI application."""
+"""Main FastAPI application with async support."""
 
 from contextlib import asynccontextmanager
 
@@ -7,8 +7,10 @@ from strawberry.fastapi import GraphQLRouter
 
 from app.api.exception_handlers import register_exception_handlers
 from app.api.graphql.schema import schema
+# REST API routers (sync - FastAPI handles async wrapping automatically)
 from app.api.rest.bank_transactions import router as bank_transactions_router
 from app.api.rest.invoices import router as invoices_router
+from app.api.rest.matches import router as matches_router
 from app.api.rest.reconciliation import router as reconciliation_router
 from app.api.rest.tenants import router as tenants_router
 from app.api.rest.vendors import router as vendors_router
@@ -43,6 +45,7 @@ This API provides:
 ## Features
 
 - **Multi-tenancy**: Complete data isolation between organizations
+- **Async Support**: Database layer supports async operations
 - **Reconciliation**: Deterministic matching with configurable scoring
 - **AI Integration**: Natural language explanations with graceful fallback
 - **Idempotency**: Safe bulk imports with idempotency keys
@@ -61,6 +64,7 @@ This API provides:
     app.include_router(vendors_router)
     app.include_router(invoices_router)
     app.include_router(bank_transactions_router)
+    app.include_router(matches_router)
     app.include_router(reconciliation_router)
 
     # Register GraphQL router

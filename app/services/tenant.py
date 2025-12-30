@@ -1,7 +1,7 @@
-"""Tenant service."""
+"""Async Tenant service."""
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.models.tenant import Tenant
@@ -9,36 +9,39 @@ from app.schemas.tenant import TenantCreate
 
 
 class TenantService:
-    """Service for tenant operations."""
+    """Async service for tenant operations."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def create(self, data: TenantCreate) -> Tenant:
+    async def create(self, data: TenantCreate) -> Tenant:
         """Create a new tenant."""
         tenant = Tenant(name=data.name)
         self.db.add(tenant)
-        self.db.flush()
+        await self.db.flush()
         return tenant
 
-    def get_by_id(self, tenant_id: str) -> Tenant:
+    async def get_by_id(self, tenant_id: str) -> Tenant:
         """Get tenant by ID."""
         stmt = select(Tenant).where(Tenant.id == tenant_id)
-        tenant = self.db.execute(stmt).scalar_one_or_none()
+        result = await self.db.execute(stmt)
+        tenant = result.scalar_one_or_none()
         if not tenant:
             raise NotFoundError("Tenant", tenant_id)
         return tenant
 
-    def list_all(self) -> list[Tenant]:
+    async def list_all(self) -> list[Tenant]:
         """List all tenants."""
         stmt = select(Tenant).order_by(Tenant.created_at.desc())
-        return list(self.db.execute(stmt).scalars().all())
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
-    def exists(self, tenant_id: str) -> bool:
+    async def exists(self, tenant_id: str) -> bool:
         """Check if tenant exists."""
         stmt = select(Tenant.id).where(Tenant.id == tenant_id)
-        return self.db.execute(stmt).scalar_one_or_none() is not None
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
-    def validate_tenant(self, tenant_id: str) -> Tenant:
+    async def validate_tenant(self, tenant_id: str) -> Tenant:
         """Validate tenant exists and return it."""
-        return self.get_by_id(tenant_id)
+        return await self.get_by_id(tenant_id)

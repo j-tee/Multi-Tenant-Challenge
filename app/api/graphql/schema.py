@@ -1,4 +1,4 @@
-"""GraphQL schema with queries and mutations."""
+"""Async GraphQL schema with queries and mutations."""
 
 from typing import Optional
 
@@ -38,7 +38,7 @@ from app.api.graphql.types import (
     VendorInput,
     VendorType,
 )
-from app.core.database import get_db_session
+from app.core.database import get_async_db_session
 from app.models.invoice import InvoiceStatus
 from app.models.match import MatchStatus
 from app.schemas.bank_transaction import BankTransactionCreate, BankTransactionFilters
@@ -61,32 +61,32 @@ class Query:
     """GraphQL Query root."""
 
     @strawberry.field
-    def tenants(self) -> list[TenantType]:
+    async def tenants(self) -> list[TenantType]:
         """List all tenants."""
-        with get_db_session() as db:
+        async with get_async_db_session() as db:
             service = TenantService(db)
-            tenants = service.list_all()
+            tenants = await service.list_all()
             return [tenant_to_gql(t) for t in tenants]
 
     @strawberry.field
-    def tenant(self, tenant_id: str) -> TenantType:
+    async def tenant(self, tenant_id: str) -> TenantType:
         """Get a tenant by ID."""
-        with get_db_session() as db:
+        async with get_async_db_session() as db:
             service = TenantService(db)
-            tenant = service.get_by_id(tenant_id)
+            tenant = await service.get_by_id(tenant_id)
             return tenant_to_gql(tenant)
 
     @strawberry.field
-    def invoices(
+    async def invoices(
         self,
         tenant_id: str,
         filters: Optional[InvoiceFiltersInput] = None,
         pagination: Optional[PaginationInput] = None,
     ) -> InvoiceConnection:
         """List invoices for a tenant with optional filtering and pagination."""
-        with get_db_session() as db:
+        async with get_async_db_session() as db:
             # Validate tenant
-            TenantService(db).validate_tenant(tenant_id)
+            await TenantService(db).validate_tenant(tenant_id)
 
             # Build filters
             invoice_filters = None
@@ -104,7 +104,7 @@ class Query:
             page_size = pagination.page_size if pagination else 50
 
             service = InvoiceService(db)
-            invoices, total = service.list_by_tenant(
+            invoices, total = await service.list_by_tenant(
                 tenant_id, filters=invoice_filters, page=page, page_size=page_size
             )
 
@@ -116,24 +116,24 @@ class Query:
             )
 
     @strawberry.field
-    def invoice(self, tenant_id: str, invoice_id: str) -> InvoiceType:
+    async def invoice(self, tenant_id: str, invoice_id: str) -> InvoiceType:
         """Get an invoice by ID."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = InvoiceService(db)
-            invoice = service.get_by_id(tenant_id, invoice_id)
+            invoice = await service.get_by_id(tenant_id, invoice_id)
             return invoice_to_gql(invoice)
 
     @strawberry.field
-    def bank_transactions(
+    async def bank_transactions(
         self,
         tenant_id: str,
         filters: Optional[BankTransactionFiltersInput] = None,
         pagination: Optional[PaginationInput] = None,
     ) -> BankTransactionConnection:
         """List bank transactions for a tenant with optional filtering and pagination."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
 
             tx_filters = None
             if filters:
@@ -148,7 +148,7 @@ class Query:
             page_size = pagination.page_size if pagination else 50
 
             service = BankTransactionService(db)
-            transactions, total = service.list_by_tenant(
+            transactions, total = await service.list_by_tenant(
                 tenant_id, filters=tx_filters, page=page, page_size=page_size
             )
 
@@ -160,14 +160,14 @@ class Query:
             )
 
     @strawberry.field
-    def matches(
+    async def matches(
         self,
         tenant_id: str,
         filters: Optional[MatchFiltersInput] = None,
     ) -> list[MatchDetailType]:
         """List matches for a tenant with optional filtering."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
 
             match_filters = None
             if filters:
@@ -179,30 +179,30 @@ class Query:
                 )
 
             service = MatchService(db)
-            matches = service.list_by_tenant(tenant_id, filters=match_filters)
+            matches = await service.list_by_tenant(tenant_id, filters=match_filters)
             return [match_to_detail_gql(m) for m in matches]
 
     @strawberry.field
-    def match(self, tenant_id: str, match_id: str) -> MatchDetailType:
+    async def match(self, tenant_id: str, match_id: str) -> MatchDetailType:
         """Get a match by ID."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = MatchService(db)
-            match = service.get_by_id(tenant_id, match_id)
+            match = await service.get_by_id(tenant_id, match_id)
             return match_to_detail_gql(match)
 
     @strawberry.field
-    def explain_reconciliation(
+    async def explain_reconciliation(
         self,
         tenant_id: str,
         invoice_id: str,
         transaction_id: str,
     ) -> ExplanationType:
         """Get AI explanation for a match decision."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = AIExplanationService(db)
-            result = service.explain_match(tenant_id, invoice_id, transaction_id)
+            result = await service.explain_match(tenant_id, invoice_id, transaction_id)
             return ExplanationType(
                 invoice_id=result.invoice_id,
                 transaction_id=result.transaction_id,
@@ -217,31 +217,31 @@ class Mutation:
     """GraphQL Mutation root."""
 
     @strawberry.mutation
-    def create_tenant(self, input: TenantInput) -> TenantType:
+    async def create_tenant(self, input: TenantInput) -> TenantType:
         """Create a new tenant."""
-        with get_db_session() as db:
+        async with get_async_db_session() as db:
             service = TenantService(db)
-            tenant = service.create(TenantCreate(name=input.name))
-            db.commit()
+            tenant = await service.create(TenantCreate(name=input.name))
+            await db.commit()
             return tenant_to_gql(tenant)
 
     @strawberry.mutation
-    def create_vendor(self, tenant_id: str, input: VendorInput) -> VendorType:
+    async def create_vendor(self, tenant_id: str, input: VendorInput) -> VendorType:
         """Create a new vendor."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = VendorService(db)
-            vendor = service.create(tenant_id, VendorCreate(name=input.name))
-            db.commit()
+            vendor = await service.create(tenant_id, VendorCreate(name=input.name))
+            await db.commit()
             return vendor_to_gql(vendor)
 
     @strawberry.mutation
-    def create_invoice(self, tenant_id: str, input: InvoiceInput) -> InvoiceType:
+    async def create_invoice(self, tenant_id: str, input: InvoiceInput) -> InvoiceType:
         """Create a new invoice."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = InvoiceService(db)
-            invoice = service.create(
+            invoice = await service.create(
                 tenant_id,
                 InvoiceCreate(
                     vendor_id=input.vendor_id,
@@ -253,29 +253,29 @@ class Mutation:
                     status=InvoiceStatusEnum(input.status.value),
                 ),
             )
-            db.commit()
+            await db.commit()
             return invoice_to_gql(invoice)
 
     @strawberry.mutation
-    def delete_invoice(self, tenant_id: str, invoice_id: str) -> bool:
+    async def delete_invoice(self, tenant_id: str, invoice_id: str) -> bool:
         """Delete an invoice."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = InvoiceService(db)
-            service.delete(tenant_id, invoice_id)
-            db.commit()
+            await service.delete(tenant_id, invoice_id)
+            await db.commit()
             return True
 
     @strawberry.mutation
-    def import_bank_transactions(
+    async def import_bank_transactions(
         self,
         tenant_id: str,
         input: BankTransactionImportInput,
         idempotency_key: Optional[str] = None,
     ) -> BankTransactionImportResultType:
         """Bulk import bank transactions with optional idempotency."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
 
             # Convert input to create schemas
             transactions = [
@@ -295,7 +295,7 @@ class Mutation:
             # Check idempotency if key provided
             if idempotency_key:
                 idempotency_service = IdempotencyService(db)
-                is_duplicate, cached_response = idempotency_service.check_and_get(
+                is_duplicate, cached_response = await idempotency_service.check_and_get(
                     idempotency_key=idempotency_key,
                     tenant_id=tenant_id,
                     operation="bank_transaction_import",
@@ -314,12 +314,12 @@ class Mutation:
 
             # Perform import
             service = BankTransactionService(db)
-            result = service.bulk_import(tenant_id, transactions)
+            result = await service.bulk_import(tenant_id, transactions)
 
             # Store for idempotency
             if idempotency_key:
                 idempotency_service = IdempotencyService(db)
-                idempotency_service.store(
+                await idempotency_service.store(
                     idempotency_key=idempotency_key,
                     tenant_id=tenant_id,
                     operation="bank_transaction_import",
@@ -327,7 +327,7 @@ class Mutation:
                     response=result.model_dump(mode="json"),
                 )
 
-            db.commit()
+            await db.commit()
 
             return BankTransactionImportResultType(
                 imported=result.imported,
@@ -339,24 +339,24 @@ class Mutation:
             )
 
     @strawberry.mutation
-    def reconcile(
+    async def reconcile(
         self,
         tenant_id: str,
         input: Optional[ReconcileInput] = None,
     ) -> ReconciliationResultType:
         """Run reconciliation to match invoices with bank transactions."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
 
             min_score = input.min_score if input else 0.5
 
             engine = ReconciliationEngine(db)
-            matches_created, candidates = engine.run_reconciliation(
+            matches_created, candidates = await engine.run_reconciliation(
                 tenant_id=tenant_id,
                 min_score=min_score,
                 create_matches=True,
             )
-            db.commit()
+            await db.commit()
 
             candidate_types = []
             for candidate in candidates:
@@ -384,23 +384,23 @@ class Mutation:
             )
 
     @strawberry.mutation
-    def confirm_match(self, tenant_id: str, match_id: str) -> MatchType:
+    async def confirm_match(self, tenant_id: str, match_id: str) -> MatchType:
         """Confirm a proposed match."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = MatchService(db)
-            match = service.confirm(tenant_id, match_id)
-            db.commit()
+            match = await service.confirm(tenant_id, match_id)
+            await db.commit()
             return match_to_gql(match)
 
     @strawberry.mutation
-    def reject_match(self, tenant_id: str, match_id: str) -> MatchType:
+    async def reject_match(self, tenant_id: str, match_id: str) -> MatchType:
         """Reject a proposed match."""
-        with get_db_session() as db:
-            TenantService(db).validate_tenant(tenant_id)
+        async with get_async_db_session() as db:
+            await TenantService(db).validate_tenant(tenant_id)
             service = MatchService(db)
-            match = service.reject(tenant_id, match_id)
-            db.commit()
+            match = await service.reject(tenant_id, match_id)
+            await db.commit()
             return match_to_gql(match)
 
 

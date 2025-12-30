@@ -7,9 +7,10 @@ from datetime import date
 class TestCreateInvoice:
     """Tests for invoice creation."""
 
-    def test_create_invoice_success(self, client, sample_tenant, sample_vendor):
+    @pytest.mark.asyncio
+    async def test_create_invoice_success(self, client, sample_tenant, sample_vendor):
         """Test successful invoice creation."""
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "vendor_id": sample_vendor["id"],
@@ -29,9 +30,10 @@ class TestCreateInvoice:
         assert data["status"] == "open"
         assert data["tenant_id"] == sample_tenant["id"]
 
-    def test_create_invoice_without_vendor(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_create_invoice_without_vendor(self, client, sample_tenant):
         """Test creating invoice without vendor."""
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "amount": "750.00",
@@ -44,18 +46,20 @@ class TestCreateInvoice:
         assert data["vendor_id"] is None
         assert data["amount"] == "750.00"
 
-    def test_create_invoice_invalid_tenant(self, client):
+    @pytest.mark.asyncio
+    async def test_create_invoice_invalid_tenant(self, client):
         """Test creating invoice with non-existent tenant."""
-        response = client.post(
+        response = await client.post(
             "/tenants/non-existent-tenant/invoices",
             json={"amount": "100.00"},
         )
 
         assert response.status_code == 404
 
-    def test_create_invoice_missing_amount(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_create_invoice_missing_amount(self, client, sample_tenant):
         """Test creating invoice without required amount."""
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={"description": "No amount"},
         )
@@ -66,18 +70,20 @@ class TestCreateInvoice:
 class TestListInvoices:
     """Tests for invoice listing and filtering."""
 
-    def test_list_invoices_empty(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_list_invoices_empty(self, client, sample_tenant):
         """Test listing invoices when none exist."""
-        response = client.get(f"/tenants/{sample_tenant['id']}/invoices")
+        response = await client.get(f"/tenants/{sample_tenant['id']}/invoices")
 
         assert response.status_code == 200
         data = response.json()
         assert data["items"] == []
         assert data["total"] == 0
 
-    def test_list_invoices_with_data(self, client, sample_tenant, sample_invoice):
+    @pytest.mark.asyncio
+    async def test_list_invoices_with_data(self, client, sample_tenant, sample_invoice):
         """Test listing invoices with existing data."""
-        response = client.get(f"/tenants/{sample_tenant['id']}/invoices")
+        response = await client.get(f"/tenants/{sample_tenant['id']}/invoices")
 
         assert response.status_code == 200
         data = response.json()
@@ -85,10 +91,11 @@ class TestListInvoices:
         assert len(data["items"]) == 1
         assert data["items"][0]["id"] == sample_invoice["id"]
 
-    def test_list_invoices_filter_by_status(self, client, sample_tenant, sample_invoice):
+    @pytest.mark.asyncio
+    async def test_list_invoices_filter_by_status(self, client, sample_tenant, sample_invoice):
         """Test filtering invoices by status."""
         # Filter by open status
-        response = client.get(
+        response = await client.get(
             f"/tenants/{sample_tenant['id']}/invoices",
             params={"status": "open"},
         )
@@ -98,7 +105,7 @@ class TestListInvoices:
         assert data["total"] == 1
 
         # Filter by matched status
-        response = client.get(
+        response = await client.get(
             f"/tenants/{sample_tenant['id']}/invoices",
             params={"status": "matched"},
         )
@@ -107,19 +114,20 @@ class TestListInvoices:
         data = response.json()
         assert data["total"] == 0
 
-    def test_list_invoices_filter_by_amount_range(
+    @pytest.mark.asyncio
+    async def test_list_invoices_filter_by_amount_range(
         self, client, sample_tenant, sample_vendor
     ):
         """Test filtering invoices by amount range."""
         # Create invoices with different amounts
         for amount in ["100.00", "500.00", "1000.00"]:
-            client.post(
+            await client.post(
                 f"/tenants/{sample_tenant['id']}/invoices",
                 json={"amount": amount},
             )
 
         # Filter by amount range
-        response = client.get(
+        response = await client.get(
             f"/tenants/{sample_tenant['id']}/invoices",
             params={"amount_min": "400", "amount_max": "600"},
         )
@@ -129,17 +137,18 @@ class TestListInvoices:
         assert data["total"] == 1
         assert data["items"][0]["amount"] == "500.00"
 
-    def test_list_invoices_filter_by_vendor(
+    @pytest.mark.asyncio
+    async def test_list_invoices_filter_by_vendor(
         self, client, sample_tenant, sample_vendor, sample_invoice
     ):
         """Test filtering invoices by vendor."""
         # Create another invoice without vendor
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={"amount": "200.00"},
         )
 
-        response = client.get(
+        response = await client.get(
             f"/tenants/{sample_tenant['id']}/invoices",
             params={"vendor_id": sample_vendor["id"]},
         )
@@ -153,36 +162,39 @@ class TestListInvoices:
 class TestDeleteInvoice:
     """Tests for invoice deletion."""
 
-    def test_delete_invoice_success(self, client, sample_tenant, sample_invoice):
+    @pytest.mark.asyncio
+    async def test_delete_invoice_success(self, client, sample_tenant, sample_invoice):
         """Test successful invoice deletion."""
-        response = client.delete(
+        response = await client.delete(
             f"/tenants/{sample_tenant['id']}/invoices/{sample_invoice['id']}"
         )
 
         assert response.status_code == 204
 
         # Verify deletion
-        response = client.get(
+        response = await client.get(
             f"/tenants/{sample_tenant['id']}/invoices/{sample_invoice['id']}"
         )
         assert response.status_code == 404
 
-    def test_delete_invoice_not_found(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_delete_invoice_not_found(self, client, sample_tenant):
         """Test deleting non-existent invoice."""
-        response = client.delete(
+        response = await client.delete(
             f"/tenants/{sample_tenant['id']}/invoices/non-existent-id"
         )
 
         assert response.status_code == 404
 
-    def test_delete_invoice_wrong_tenant(self, client, sample_invoice):
+    @pytest.mark.asyncio
+    async def test_delete_invoice_wrong_tenant(self, client, sample_invoice):
         """Test deleting invoice from wrong tenant (isolation test)."""
         # Create another tenant
-        response = client.post("/tenants", json={"name": "Other Company"})
+        response = await client.post("/tenants", json={"name": "Other Company"})
         other_tenant = response.json()
 
         # Try to delete invoice from wrong tenant
-        response = client.delete(
+        response = await client.delete(
             f"/tenants/{other_tenant['id']}/invoices/{sample_invoice['id']}"
         )
 

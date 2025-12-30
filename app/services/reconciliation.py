@@ -1,5 +1,5 @@
 """
-Reconciliation Engine - Deterministic matching heuristics.
+Async Reconciliation Engine - Deterministic matching heuristics.
 
 This module implements the core reconciliation logic using deterministic heuristics
 to match invoices with bank transactions. The scoring system is designed to produce
@@ -42,7 +42,8 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 import re
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.bank_transaction import BankTransaction
@@ -67,7 +68,7 @@ class MatchCandidate:
 
 class ReconciliationEngine:
     """
-    Engine for matching invoices with bank transactions using deterministic heuristics.
+    Async engine for matching invoices with bank transactions using deterministic heuristics.
     """
 
     # Scoring weights
@@ -79,7 +80,7 @@ class ReconciliationEngine:
     # Thresholds
     MIN_MATCH_SCORE = 0.5
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.settings = get_settings()
         self.invoice_service = InvoiceService(db)
@@ -253,7 +254,7 @@ class ReconciliationEngine:
             currency_score=currency_score,
         )
 
-    def find_candidates(
+    async def find_candidates(
         self,
         tenant_id: str,
         min_score: float | None = None,
@@ -266,8 +267,8 @@ class ReconciliationEngine:
         min_score = min_score or self.MIN_MATCH_SCORE
 
         # Get open invoices and unmatched transactions
-        invoices = self.invoice_service.get_open_invoices(tenant_id)
-        transactions = self.transaction_service.get_unmatched_transactions(tenant_id)
+        invoices = await self.invoice_service.get_open_invoices(tenant_id)
+        transactions = await self.transaction_service.get_unmatched_transactions(tenant_id)
 
         candidates = []
 
@@ -282,7 +283,7 @@ class ReconciliationEngine:
 
         return candidates
 
-    def run_reconciliation(
+    async def run_reconciliation(
         self,
         tenant_id: str,
         min_score: float | None = None,
@@ -299,9 +300,7 @@ class ReconciliationEngine:
         Returns:
             Tuple of (created matches, all candidates)
         """
-        from sqlalchemy import select
-
-        candidates = self.find_candidates(tenant_id, min_score)
+        candidates = await self.find_candidates(tenant_id, min_score)
         matches_created = []
 
         if create_matches:
@@ -314,7 +313,8 @@ class ReconciliationEngine:
                 Match.tenant_id == tenant_id,
                 Match.status == MatchStatus.PROPOSED,
             )
-            for existing in self.db.execute(existing_stmt).scalars().all():
+            result = await self.db.execute(existing_stmt)
+            for existing in result.scalars().all():
                 used_invoices.add(existing.invoice_id)
                 used_transactions.add(existing.bank_transaction_id)
 
@@ -339,7 +339,7 @@ class ReconciliationEngine:
                 used_invoices.add(candidate.invoice.id)
                 used_transactions.add(candidate.transaction.id)
 
-            self.db.flush()
+            await self.db.flush()
 
         return matches_created, candidates
 

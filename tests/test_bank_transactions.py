@@ -6,7 +6,8 @@ import pytest
 class TestBankTransactionImport:
     """Tests for bank transaction bulk import."""
 
-    def test_import_transactions_success(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_import_transactions_success(self, client, sample_tenant):
         """Test successful transaction import."""
         transactions = [
             {
@@ -18,7 +19,7 @@ class TestBankTransactionImport:
             },
         ]
 
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
         )
@@ -29,7 +30,8 @@ class TestBankTransactionImport:
         assert data["skipped"] == 0
         assert len(data["transactions"]) == 1
 
-    def test_import_transactions_with_duplicates(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_import_transactions_with_duplicates(self, client, sample_tenant):
         """Test import skips duplicates by external_id."""
         transactions = [
             {
@@ -41,7 +43,7 @@ class TestBankTransactionImport:
         ]
 
         # First import
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
         )
@@ -50,7 +52,7 @@ class TestBankTransactionImport:
 
         # Second import with same external_id
         transactions[0]["description"] = "Second import"
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
         )
@@ -62,7 +64,8 @@ class TestBankTransactionImport:
 class TestIdempotency:
     """Tests for idempotency key handling."""
 
-    def test_idempotency_same_key_same_payload(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_idempotency_same_key_same_payload(self, client, sample_tenant):
         """Test idempotent request returns cached result."""
         transactions = [
             {
@@ -75,7 +78,7 @@ class TestIdempotency:
         idempotency_key = "idem-key-001"
 
         # First request
-        response1 = client.post(
+        response1 = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
             headers={"Idempotency-Key": idempotency_key},
@@ -85,7 +88,7 @@ class TestIdempotency:
         assert data1["imported"] == 1
 
         # Second request with same key and payload
-        response2 = client.post(
+        response2 = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
             headers={"Idempotency-Key": idempotency_key},
@@ -97,7 +100,8 @@ class TestIdempotency:
         assert data2["imported"] == data1["imported"]
         assert data2["skipped"] == data1["skipped"]
 
-    def test_idempotency_same_key_different_payload(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_idempotency_same_key_different_payload(self, client, sample_tenant):
         """Test idempotency key reuse with different payload returns conflict."""
         idempotency_key = "idem-key-002"
 
@@ -109,7 +113,7 @@ class TestIdempotency:
                 "amount": "100.00",
             },
         ]
-        response1 = client.post(
+        response1 = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions1},
             headers={"Idempotency-Key": idempotency_key},
@@ -124,7 +128,7 @@ class TestIdempotency:
                 "amount": "200.00",
             },
         ]
-        response2 = client.post(
+        response2 = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions2},
             headers={"Idempotency-Key": idempotency_key},
@@ -134,7 +138,8 @@ class TestIdempotency:
         assert response2.status_code == 409
         assert "conflict" in response2.json()["error"]
 
-    def test_idempotency_different_keys(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_idempotency_different_keys(self, client, sample_tenant):
         """Test different idempotency keys create separate records."""
         transactions = [
             {
@@ -145,7 +150,7 @@ class TestIdempotency:
         ]
 
         # First request with key 1
-        response1 = client.post(
+        response1 = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
             headers={"Idempotency-Key": "idem-key-003"},
@@ -157,7 +162,7 @@ class TestIdempotency:
         transactions[0]["external_id"] = "TXN-IDEM-5"
 
         # Second request with key 2
-        response2 = client.post(
+        response2 = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
             headers={"Idempotency-Key": "idem-key-004"},
@@ -165,7 +170,8 @@ class TestIdempotency:
         assert response2.status_code == 201
         assert response2.json()["imported"] == 1
 
-    def test_import_without_idempotency_key(self, client, sample_tenant):
+    @pytest.mark.asyncio
+    async def test_import_without_idempotency_key(self, client, sample_tenant):
         """Test import works without idempotency key."""
         transactions = [
             {
@@ -175,7 +181,7 @@ class TestIdempotency:
             },
         ]
 
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={"transactions": transactions},
         )

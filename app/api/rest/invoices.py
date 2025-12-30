@@ -1,14 +1,14 @@
-"""Invoice REST API endpoints."""
+"""Async Invoice REST API endpoints."""
 
 from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.rest.dependencies import ValidatedTenantId
-from app.core.database import get_db
+from app.core.database import get_async_db
 from app.schemas.invoice import (
     InvoiceCreate,
     InvoiceFilters,
@@ -27,15 +27,14 @@ router = APIRouter(prefix="/tenants/{tenant_id}/invoices", tags=["invoices"])
     status_code=status.HTTP_201_CREATED,
     summary="Create a new invoice",
 )
-def create_invoice(
+async def create_invoice(
     tenant_id: ValidatedTenantId,
     data: InvoiceCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> InvoiceResponse:
     """Create a new invoice for a tenant."""
     service = InvoiceService(db)
-    invoice = service.create(tenant_id, data)
-    db.commit()
+    invoice = await service.create(tenant_id, data)
     return InvoiceResponse.model_validate(invoice)
 
 
@@ -44,9 +43,9 @@ def create_invoice(
     response_model=InvoiceList,
     summary="List invoices",
 )
-def list_invoices(
+async def list_invoices(
     tenant_id: ValidatedTenantId,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
     status: InvoiceStatusEnum | None = Query(None, description="Filter by status"),
     vendor_id: str | None = Query(None, description="Filter by vendor ID"),
     date_from: date | None = Query(None, description="Filter by date range start"),
@@ -75,7 +74,7 @@ def list_invoices(
     )
 
     service = InvoiceService(db)
-    invoices, total = service.list_by_tenant(
+    invoices, total = await service.list_by_tenant(
         tenant_id, filters=filters, page=page, page_size=page_size
     )
 
@@ -92,14 +91,14 @@ def list_invoices(
     response_model=InvoiceResponse,
     summary="Get invoice by ID",
 )
-def get_invoice(
+async def get_invoice(
     tenant_id: ValidatedTenantId,
     invoice_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> InvoiceResponse:
     """Get a specific invoice by ID."""
     service = InvoiceService(db)
-    invoice = service.get_by_id(tenant_id, invoice_id)
+    invoice = await service.get_by_id(tenant_id, invoice_id)
     return InvoiceResponse.model_validate(invoice)
 
 
@@ -108,12 +107,11 @@ def get_invoice(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an invoice",
 )
-def delete_invoice(
+async def delete_invoice(
     tenant_id: ValidatedTenantId,
     invoice_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> None:
     """Delete an invoice. Cannot delete matched invoices."""
     service = InvoiceService(db)
-    service.delete(tenant_id, invoice_id)
-    db.commit()
+    await service.delete(tenant_id, invoice_id)

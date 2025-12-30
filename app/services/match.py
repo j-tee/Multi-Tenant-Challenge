@@ -1,9 +1,10 @@
-"""Match service."""
+"""Async Match service."""
 
 from decimal import Decimal
 
 from sqlalchemy import and_, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.invoice import InvoiceStatus
@@ -12,12 +13,12 @@ from app.schemas.match import MatchFilters
 
 
 class MatchService:
-    """Service for match operations."""
+    """Async service for match operations."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def get_by_id(self, tenant_id: str, match_id: str) -> Match:
+    async def get_by_id(self, tenant_id: str, match_id: str) -> Match:
         """Get match by ID with tenant isolation."""
         stmt = (
             select(Match)
@@ -27,12 +28,13 @@ class MatchService:
                 Match.tenant_id == tenant_id,
             )
         )
-        match = self.db.execute(stmt).unique().scalar_one_or_none()
+        result = await self.db.execute(stmt)
+        match = result.unique().scalar_one_or_none()
         if not match:
             raise NotFoundError("Match", match_id)
         return match
 
-    def list_by_tenant(
+    async def list_by_tenant(
         self,
         tenant_id: str,
         filters: MatchFilters | None = None,
@@ -56,9 +58,10 @@ class MatchService:
             .where(and_(*conditions))
             .order_by(Match.score.desc())
         )
-        return list(self.db.execute(stmt).unique().scalars().all())
+        result = await self.db.execute(stmt)
+        return list(result.unique().scalars().all())
 
-    def confirm(self, tenant_id: str, match_id: str) -> Match:
+    async def confirm(self, tenant_id: str, match_id: str) -> Match:
         """
         Confirm a proposed match.
 
@@ -67,7 +70,7 @@ class MatchService:
         2. Update invoice status to MATCHED
         3. Reject other proposed matches for the same invoice/transaction
         """
-        match = self.get_by_id(tenant_id, match_id)
+        match = await self.get_by_id(tenant_id, match_id)
 
         if match.status == MatchStatus.CONFIRMED:
             return match  # Already confirmed, idempotent
@@ -91,7 +94,8 @@ class MatchService:
             Match.id != match_id,
             Match.status == MatchStatus.PROPOSED,
         )
-        for other_match in self.db.execute(stmt).scalars().all():
+        result = await self.db.execute(stmt)
+        for other_match in result.scalars().all():
             other_match.status = MatchStatus.REJECTED
 
         # Reject other proposed matches for the same transaction
@@ -101,15 +105,16 @@ class MatchService:
             Match.id != match_id,
             Match.status == MatchStatus.PROPOSED,
         )
-        for other_match in self.db.execute(stmt).scalars().all():
+        result = await self.db.execute(stmt)
+        for other_match in result.scalars().all():
             other_match.status = MatchStatus.REJECTED
 
-        self.db.flush()
+        await self.db.flush()
         return match
 
-    def reject(self, tenant_id: str, match_id: str) -> Match:
+    async def reject(self, tenant_id: str, match_id: str) -> Match:
         """Reject a proposed match."""
-        match = self.get_by_id(tenant_id, match_id)
+        match = await self.get_by_id(tenant_id, match_id)
 
         if match.status != MatchStatus.PROPOSED:
             raise ValidationError(
@@ -118,5 +123,5 @@ class MatchService:
             )
 
         match.status = MatchStatus.REJECTED
-        self.db.flush()
+        await self.db.flush()
         return match

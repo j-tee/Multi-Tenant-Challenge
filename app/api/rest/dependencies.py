@@ -1,29 +1,29 @@
-"""REST API dependencies."""
+"""Async REST API dependencies."""
 
 from typing import Annotated
 
 from fastapi import Depends, Header, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_async_db
 from app.core.exceptions import NotFoundError
 from app.services.tenant import TenantService
 
 
-def get_tenant_service(
-    db: Session = Depends(get_db),
+async def get_tenant_service(
+    db: AsyncSession = Depends(get_async_db),
 ) -> TenantService:
     """Get tenant service dependency."""
     return TenantService(db)
 
 
-def validate_tenant_id(
+async def validate_tenant_id(
     tenant_id: Annotated[str, Path(description="Tenant ID")],
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> str:
     """Validate that the tenant exists and return the tenant_id."""
     service = TenantService(db)
-    service.validate_tenant(tenant_id)
+    await service.validate_tenant(tenant_id)
     return tenant_id
 
 

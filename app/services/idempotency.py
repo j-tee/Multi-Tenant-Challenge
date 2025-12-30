@@ -1,22 +1,22 @@
-"""Idempotency service."""
+"""Async Idempotency service."""
 
 import json
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError
 from app.models.idempotency import IdempotencyRecord
 
 
 class IdempotencyService:
-    """Service for managing idempotent operations."""
+    """Async service for managing idempotent operations."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def check_and_get(
+    async def check_and_get(
         self,
         idempotency_key: str,
         tenant_id: str,
@@ -39,15 +39,16 @@ class IdempotencyService:
             IdempotencyRecord.tenant_id == tenant_id,
             IdempotencyRecord.operation == operation,
         )
-        record = self.db.execute(stmt).scalar_one_or_none()
+        result = await self.db.execute(stmt)
+        record = result.scalar_one_or_none()
 
         if record is None:
             return False, None
 
         # Check if expired
         if record.is_expired():
-            self.db.delete(record)
-            self.db.flush()
+            await self.db.delete(record)
+            await self.db.flush()
             return False, None
 
         # Check if payload matches
@@ -62,7 +63,7 @@ class IdempotencyService:
 
         return True, record.get_response()
 
-    def store(
+    async def store(
         self,
         idempotency_key: str,
         tenant_id: str,
@@ -81,10 +82,10 @@ class IdempotencyService:
             ttl_hours=ttl_hours,
         )
         self.db.add(record)
-        self.db.flush()
+        await self.db.flush()
         return record
 
-    def cleanup_expired(self) -> int:
+    async def cleanup_expired(self) -> int:
         """Remove expired idempotency records."""
         from datetime import datetime, timezone
 
@@ -92,8 +93,9 @@ class IdempotencyService:
         stmt = select(IdempotencyRecord).where(
             IdempotencyRecord.expires_at < now
         )
-        expired = list(self.db.execute(stmt).scalars().all())
+        result = await self.db.execute(stmt)
+        expired = list(result.scalars().all())
         for record in expired:
-            self.db.delete(record)
-        self.db.flush()
+            await self.db.delete(record)
+        await self.db.flush()
         return len(expired)

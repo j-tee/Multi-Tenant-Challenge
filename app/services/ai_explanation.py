@@ -1,5 +1,5 @@
 """
-AI Explanation Service.
+Async AI Explanation Service.
 
 This module provides AI-powered explanations for match decisions using OpenAI.
 It includes graceful fallback to deterministic explanations when AI is unavailable.
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import AIServiceError, NotFoundError
@@ -99,7 +99,7 @@ class MockAIClient:
 
 class AIExplanationService:
     """
-    Service for generating AI-powered explanations of match decisions.
+    Async service for generating AI-powered explanations of match decisions.
 
     Features:
     - Uses OpenAI GPT models for natural language explanations
@@ -108,7 +108,7 @@ class AIExplanationService:
     - Configurable timeouts and error handling
     """
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.settings = get_settings()
         self.invoice_service = InvoiceService(db)
@@ -303,7 +303,7 @@ CONFIDENCE: [HIGH/MEDIUM/LOW]
 
         return " ".join(explanations), confidence
 
-    def explain_match(
+    async def explain_match(
         self,
         tenant_id: str,
         invoice_id: str,
@@ -321,8 +321,8 @@ CONFIDENCE: [HIGH/MEDIUM/LOW]
             ExplanationResponse with natural language explanation
         """
         # Get entities with tenant isolation
-        invoice = self.invoice_service.get_by_id(tenant_id, invoice_id)
-        transaction = self.transaction_service.get_by_id(tenant_id, transaction_id)
+        invoice = await self.invoice_service.get_by_id(tenant_id, invoice_id)
+        transaction = await self.transaction_service.get_by_id(tenant_id, transaction_id)
 
         # Get score details
         score_details = self.reconciliation_engine.get_score_explanation(

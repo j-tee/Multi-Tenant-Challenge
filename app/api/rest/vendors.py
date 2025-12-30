@@ -1,10 +1,10 @@
-"""Vendor REST API endpoints."""
+"""Async Vendor REST API endpoints."""
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.rest.dependencies import ValidatedTenantId
-from app.core.database import get_db
+from app.core.database import get_async_db
 from app.schemas.vendor import VendorCreate, VendorList, VendorResponse
 from app.services.vendor import VendorService
 
@@ -17,15 +17,14 @@ router = APIRouter(prefix="/tenants/{tenant_id}/vendors", tags=["vendors"])
     status_code=status.HTTP_201_CREATED,
     summary="Create a new vendor",
 )
-def create_vendor(
+async def create_vendor(
     tenant_id: ValidatedTenantId,
     data: VendorCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> VendorResponse:
     """Create a new vendor for a tenant."""
     service = VendorService(db)
-    vendor = service.create(tenant_id, data)
-    db.commit()
+    vendor = await service.create(tenant_id, data)
     return VendorResponse.model_validate(vendor)
 
 
@@ -34,13 +33,13 @@ def create_vendor(
     response_model=VendorList,
     summary="List vendors",
 )
-def list_vendors(
+async def list_vendors(
     tenant_id: ValidatedTenantId,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> VendorList:
     """List all vendors for a tenant."""
     service = VendorService(db)
-    vendors = service.list_by_tenant(tenant_id)
+    vendors = await service.list_by_tenant(tenant_id)
     return VendorList(
         items=[VendorResponse.model_validate(v) for v in vendors],
         total=len(vendors),
@@ -52,12 +51,12 @@ def list_vendors(
     response_model=VendorResponse,
     summary="Get vendor by ID",
 )
-def get_vendor(
+async def get_vendor(
     tenant_id: ValidatedTenantId,
     vendor_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> VendorResponse:
     """Get a specific vendor by ID."""
     service = VendorService(db)
-    vendor = service.get_by_id(tenant_id, vendor_id)
+    vendor = await service.get_by_id(tenant_id, vendor_id)
     return VendorResponse.model_validate(vendor)

@@ -7,12 +7,13 @@ from decimal import Decimal
 class TestReconciliation:
     """Tests for the reconciliation process."""
 
-    def test_reconciliation_exact_match(
+    @pytest.mark.asyncio
+    async def test_reconciliation_exact_match(
         self, client, sample_tenant, sample_vendor, sample_bank_transactions
     ):
         """Test reconciliation finds exact matches."""
         # Create invoice that matches first transaction exactly
-        invoice_response = client.post(
+        invoice_response = await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "vendor_id": sample_vendor["id"],
@@ -27,7 +28,7 @@ class TestReconciliation:
         invoice = invoice_response.json()
 
         # Run reconciliation
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/reconcile",
             params={"min_score": 0.5},
         )
@@ -41,10 +42,11 @@ class TestReconciliation:
         best_match = data["candidates"][0]
         assert Decimal(best_match["score"]) >= Decimal("0.5")
 
-    def test_reconciliation_ranking(self, client, sample_tenant, sample_vendor):
+    @pytest.mark.asyncio
+    async def test_reconciliation_ranking(self, client, sample_tenant, sample_vendor):
         """Test that candidates are properly ranked by score."""
         # Create a transaction
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={
                 "transactions": [
@@ -61,7 +63,7 @@ class TestReconciliation:
 
         # Create invoices with varying match quality
         # Invoice 1: Exact amount, same date, good description match
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "vendor_id": sample_vendor["id"],
@@ -72,7 +74,7 @@ class TestReconciliation:
         )
 
         # Invoice 2: Different amount
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "amount": "500.00",
@@ -82,7 +84,7 @@ class TestReconciliation:
         )
 
         # Run reconciliation
-        response = client.post(f"/tenants/{sample_tenant['id']}/reconcile")
+        response = await client.post(f"/tenants/{sample_tenant['id']}/reconcile")
 
         assert response.status_code == 200
         data = response.json()
@@ -92,12 +94,13 @@ class TestReconciliation:
             scores = [Decimal(c["score"]) for c in data["candidates"]]
             assert scores == sorted(scores, reverse=True)
 
-    def test_reconciliation_no_matches_below_threshold(
+    @pytest.mark.asyncio
+    async def test_reconciliation_no_matches_below_threshold(
         self, client, sample_tenant, sample_vendor
     ):
         """Test that low-scoring matches are excluded."""
         # Create transaction
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={
                 "transactions": [
@@ -112,7 +115,7 @@ class TestReconciliation:
         )
 
         # Create invoice with completely different amount
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "amount": "5000.00",
@@ -122,7 +125,7 @@ class TestReconciliation:
         )
 
         # Run reconciliation with high threshold
-        response = client.post(
+        response = await client.post(
             f"/tenants/{sample_tenant['id']}/reconcile",
             params={"min_score": 0.9},
         )
@@ -137,12 +140,13 @@ class TestReconciliation:
 class TestMatchConfirmation:
     """Tests for match confirmation workflow."""
 
-    def test_confirm_match_updates_state(
+    @pytest.mark.asyncio
+    async def test_confirm_match_updates_state(
         self, client, sample_tenant, sample_vendor, sample_bank_transactions
     ):
         """Test confirming a match updates invoice and match status."""
         # Create matching invoice
-        invoice_response = client.post(
+        invoice_response = await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={
                 "vendor_id": sample_vendor["id"],
@@ -153,7 +157,7 @@ class TestMatchConfirmation:
         invoice = invoice_response.json()
 
         # Run reconciliation
-        recon_response = client.post(f"/tenants/{sample_tenant['id']}/reconcile")
+        recon_response = await client.post(f"/tenants/{sample_tenant['id']}/reconcile")
         candidates = recon_response.json()["candidates"]
 
         # Find a match for our invoice
@@ -166,7 +170,7 @@ class TestMatchConfirmation:
         assert match_id is not None, "Expected a match to be created"
 
         # Confirm the match
-        confirm_response = client.post(
+        confirm_response = await client.post(
             f"/tenants/{sample_tenant['id']}/matches/{match_id}/confirm"
         )
 
@@ -175,24 +179,25 @@ class TestMatchConfirmation:
         assert confirmed_match["status"] == "confirmed"
 
         # Verify invoice status is updated
-        invoice_response = client.get(
+        invoice_response = await client.get(
             f"/tenants/{sample_tenant['id']}/invoices/{invoice['id']}"
         )
         assert invoice_response.json()["status"] == "matched"
 
-    def test_confirm_match_rejects_others(
+    @pytest.mark.asyncio
+    async def test_confirm_match_rejects_others(
         self, client, sample_tenant, sample_vendor
     ):
         """Test confirming a match rejects other candidates for same invoice."""
         # Create one invoice
-        invoice_response = client.post(
+        invoice_response = await client.post(
             f"/tenants/{sample_tenant['id']}/invoices",
             json={"amount": "1000.00", "invoice_date": "2024-04-15"},
         )
         invoice = invoice_response.json()
 
         # Create two transactions that could match
-        client.post(
+        await client.post(
             f"/tenants/{sample_tenant['id']}/bank-transactions/import",
             json={
                 "transactions": [
@@ -211,10 +216,10 @@ class TestMatchConfirmation:
         )
 
         # Run reconciliation
-        client.post(f"/tenants/{sample_tenant['id']}/reconcile")
+        await client.post(f"/tenants/{sample_tenant['id']}/reconcile")
 
         # Get all matches for this invoice
-        matches_response = client.get(
+        matches_response = await client.get(
             f"/tenants/{sample_tenant['id']}/matches",
             params={"invoice_id": invoice["id"]},
         )
@@ -223,12 +228,12 @@ class TestMatchConfirmation:
         if len(matches) >= 2:
             # Confirm the first match
             first_match_id = matches[0]["id"]
-            client.post(
+            await client.post(
                 f"/tenants/{sample_tenant['id']}/matches/{first_match_id}/confirm"
             )
 
             # Check other matches are rejected
-            matches_response = client.get(
+            matches_response = await client.get(
                 f"/tenants/{sample_tenant['id']}/matches",
                 params={"invoice_id": invoice["id"]},
             )
